@@ -1,0 +1,45 @@
+.analysis-metrics {
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+  border: 1px solid #bbf7d0;
+}
+
+.analysis-metrics__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  color: #14532d;
+}
+
+.analysis-metrics__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+}
+
+.analysis-metrics__card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.65rem 0.75rem;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 8px;
+  border: 1px solid #d1fae5;
+}
+
+.analysis-metrics__label {
+  font-size: 0.8rem;
+  color: #166534;
+  font-weight: 600;
+}
+
+.analysis-metrics__value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #052e16;
+}
+
+.analysis-metrics__value--purity {
+  font-size: 1.25rem;
+}

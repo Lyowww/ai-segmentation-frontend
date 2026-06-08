@@ -1,10 +1,12 @@
 /**
  * Thin HTTP client for the Recypic backend.
  *
- * Each function below maps 1:1 to a backend endpoint and returns the same
- * `{ data, usage }` envelope. The frontend components only need to read
- * those two fields — all parsing/normalization happens server-side.
+ * Images are compressed in the browser before upload so requests stay under
+ * Vercel's 4.5 MiB serverless body limit. Dual-image multi-object analysis
+ * uses two API calls (/analyze/multi/image1 then /analyze/multi/image2).
  */
+
+import { compressImageFile } from './compressImage';
 
 const DEFAULT_API_URL = 'http://localhost:3001/api';
 const API_URL = (process.env.REACT_APP_API_URL || DEFAULT_API_URL).replace(/\/$/, '');
@@ -18,19 +20,7 @@ class ApiError extends Error {
   }
 }
 
-const post = async (path, formData) => {
-  let response;
-  try {
-    response = await fetch(`${API_URL}${path}`, {
-      method: 'POST',
-      body: formData
-    });
-  } catch (networkError) {
-    throw new ApiError('Network error: unable to reach the analysis server.', {
-      code: 'NETWORK_ERROR'
-    });
-  }
-
+const parseResponse = async (response) => {
   let payload = null;
   try {
     payload = await response.json();
@@ -47,35 +37,62 @@ const post = async (path, formData) => {
   return payload;
 };
 
-export const analyzeSingleImage = ({ image, provider, promptVersion }) => {
-  const form = new FormData();
-  form.append('image', image);
-  form.append('provider', provider);
-  form.append('promptVersion', promptVersion);
-  return post('/analyze/single', form);
+const postJson = async (path, body) => {
+  let response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  } catch {
+    throw new ApiError('Network error: unable to reach the analysis server.', {
+      code: 'NETWORK_ERROR'
+    });
+  }
+  return parseResponse(response);
 };
 
-export const analyzeMultiObject = ({ image1, image2, provider, promptVersion }) => {
-  const form = new FormData();
-  form.append('image1', image1);
-  if (image2) form.append('image2', image2);
-  form.append('provider', provider);
-  form.append('promptVersion', promptVersion);
-  return post('/analyze/multi', form);
+const pickMetrics = (data) => ({
+  ai_co2_kg: data.ai_co2_kg,
+  estimated_weight_kg: data.estimated_weight_kg,
+  purity: data.purity
+});
+
+export const analyzeSingleImage = async ({ image, provider, promptVersion }) => {
+  const imageData = await compressImageFile(image, 'singleImage');
+  return postJson('/analyze/single', { imageData, provider, promptVersion });
 };
 
-export const analyzeFoodWaste = ({ image, provider }) => {
-  const form = new FormData();
-  form.append('image', image);
-  form.append('provider', provider);
-  return post('/analyze/food-waste', form);
+export const analyzeMultiObject = async ({ image1, image2, provider, promptVersion }) => {
+  const image1Data = await compressImageFile(image1, 'multiObject');
+  const isCapsule = promptVersion === 'v4';
+
+  if (isCapsule || !image2) {
+    return postJson('/analyze/multi/image1', { image1Data, provider, promptVersion });
+  }
+
+  const step1 = await postJson('/analyze/multi/image1', { image1Data, provider, promptVersion });
+  const image2Data = await compressImageFile(image2, 'multiObject');
+
+  return postJson('/analyze/multi/image2', {
+    image2Data,
+    provider,
+    promptVersion,
+    image1Results: step1.data.image1Results,
+    usage1: step1.usage,
+    metrics1: pickMetrics(step1.data)
+  });
 };
 
-export const analyzeRecyclables = ({ image, provider }) => {
-  const form = new FormData();
-  form.append('image', image);
-  form.append('provider', provider);
-  return post('/analyze/recyclables', form);
+export const analyzeFoodWaste = async ({ image, provider }) => {
+  const imageData = await compressImageFile(image, 'foodWaste');
+  return postJson('/analyze/food-waste', { imageData, provider });
+};
+
+export const analyzeRecyclables = async ({ image, provider }) => {
+  const imageData = await compressImageFile(image, 'recyclables');
+  return postJson('/analyze/recyclables', { imageData, provider });
 };
 
 export { ApiError };
